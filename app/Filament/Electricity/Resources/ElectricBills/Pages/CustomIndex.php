@@ -1,0 +1,248 @@
+<?php
+
+namespace App\Filament\Electricity\Resources\ElectricBills\Pages;
+
+use App\Filament\Electricity\Resources\ElectricBills\ElectricBillResource;
+use App\Models\ElectricArea;
+use App\Models\ElectricBillSetting;
+use Filament\Actions\Action;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
+use Filament\Resources\Pages\Concerns\InteractsWithRecord;
+use Filament\Resources\Pages\Page;
+use Filament\Schemas\Components\Grid;
+use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Illuminate\Database\Eloquent\Builder;
+
+class CustomIndex extends Page implements HasTable, HasForms
+{
+    use InteractsWithForms, InteractsWithTable;
+
+    protected static string $resource = ElectricBillResource::class;
+
+    protected string $view = 'filament.electricity.resources.electric-bills.pages.custom-index';
+
+    public function en2bn($number): string
+    {
+        $en = ['0','1','2','3','4','5','6','7','8','9','January','February','March','April','May','June','July','August','September','October','November','December'];
+        $bn = ['০','১','২','৩','৪','৫','৬','৭','৮','৯','জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর'];
+        return str_replace($en, $bn, $number);
+    }
+
+    public function getTitle(): string
+    {
+        return 'বিদ্যুৎ বিল সমূহ';
+    }
+
+    public ?int $month=null;
+    public ?int $year=null;
+    public ?int $area_id=null;
+    public function mount(): void
+    {
+        $this->month = date('m')-1;
+        $this->year = date('Y'); 
+    }
+    protected function getFormSchema(): array
+    {
+        return [
+            Grid::make(4)->schema([
+                Select::make('area_id')
+                    ->label(__('fields.area'))
+                    ->options(ElectricArea::all()->pluck('name','id'))
+                    ->reactive()
+                    ->afterStateUpdated(fn()=>$this->resetTable()),
+                Select::make('year')
+                    ->label(__('fields.billing_year'))
+                    ->options(function () {
+                        $currentYear = date('Y');
+                        $years = [];
+                        for ($year = $currentYear; $year >= 2025; $year--) {
+                            $years[$year] = self::en2bn($year);
+                        }
+                        return $years;
+                    })
+                    ->required()
+                    ->reactive()
+                    ->visible(fn () => $this->area_id !== null),
+                Select::make('month')
+                ->label(__('fields.billing_month'))
+                ->options(function (callable $get) {
+                    $months = [
+                        1 => 'জানুয়ারি',
+                        2 => 'ফেব্রুয়ারি',
+                        3 => 'মার্চ',
+                        4 => 'এপ্রিল',
+                        5 => 'মে',
+                        6 => 'জুন',
+                        7 => 'জুলাই',
+                        8 => 'আগস্ট',
+                        9 => 'সেপ্টেম্বর',
+                        10 => 'অক্টোবর',
+                        11 => 'নভেম্বর',
+                        12 => 'ডিসেম্বর',
+                    ];
+                    $selectedYear = $get('year');
+                        $now = now();
+
+                        // If no year selected → show all months
+                        if (! $selectedYear) {
+                            return $months;
+                        }
+
+                        // Current year → only past months
+                        if ((int) $selectedYear === $now->year) {
+                            return array_slice($months, 0, $now->month - 1, true);
+                        }
+
+                        // Past or future year → all months
+                        return $months;
+                })
+                ->reactive()
+                ->afterStateUpdated(fn ()=> $this->resetTable())
+                ->required()
+                ->visible(fn () => $this->area_id !== null),
+            
+            ]),
+        ];
+    }
+
+    protected function getTableQuery()
+    {
+    //     $query = \App\Models\ElectricBill::query()
+    //     ->where(['billing_month'=> $this->month, 'billing_year' => $this->year,'is_paid' => false]);
+    //     $settings = ElectricBillSetting::latest()->first();
+    // // Process each record and apply surcharge if overdue
+    //     $query->get()->each(function ($bill) use ($settings) {
+    //     $dueDate = \Carbon\Carbon::parse($bill->payment_date);
+    //     $now = now();
+
+    //     // Only apply once
+    //     if ($now->gt($dueDate) && $bill->surcharge == 0) {
+    //         $surcharge = $bill->total_amount * ($settings->surcharge / 100);
+
+    //         $bill->surcharge = $surcharge;
+    //         $bill->total_amount += $surcharge;
+    //         $bill->save();
+    //     }
+    // });
+
+    // return $query;
+        return \App\Models\ElectricBill::query()
+        ->whereHas('customer', function (Builder $query) {
+                $query->where('electric_area_id', $this->area_id);
+        })
+        ->where(['billing_month'=> $this->month,'billing_year'=> $this->year]);
+    }
+
+    protected function getTableColumns(): array
+    {
+        return [
+            TextColumn::make('customer.name')->label(__('fields.name'))->searchable()->sortable(),
+            TextColumn::make('customer.shop_no')->label(__('fields.shop_no'))->searchable()->sortable(),
+            TextColumn::make('customer.activeMeter.meter_number')->label(__('fields.meter_number'))->searchable()->sortable(),
+            TextColumn::make('bill_month_name')->label(__('fields.billing_month'))
+            ->formatStateUsing(fn ($state) => $this->en2bn($state))
+            ->sortable(),
+            TextColumn::make('billing_year')->label(__('fields.billing_year'))->sortable()
+            ->formatStateUsing(fn ($state) => $this->en2bn($state)),
+            TextColumn::make('consumed_units')->label(__('fields.consume_unit'))->sortable()
+            ->formatStateUsing(fn ($state) => $this->en2bn($state)),
+            TextColumn::make('total_amount')->label(__('fields.total_amount'))
+            ->getStateUsing(function ($record) {
+                if($record->surcharge > 0){
+                    return $record->total_amount;
+                }else{
+                    $surcharge= \App\Helpers\ElectricBillHelper::calculateSurcharge($record);
+                    return $record->total_amount + $surcharge;
+                }
+            })
+            ->sortable()
+            ->formatStateUsing(fn ($state) => $this->en2bn(number_format($state, 2))),
+            IconColumn::make('is_paid')->label(__('fields.is_paid'))->boolean(),
+        ];
+    }
+
+    protected function getTableActions(): array
+    {
+        return [
+            Action::make('view')
+                ->label('View')
+                ->url(fn (\App\Models\ElectricBill $record): string => route('filament.electricity.resources.electric-bills.view', $record))
+                ->icon('heroicon-o-eye'),
+            Action::make('edit')
+                ->label('Edit')
+                // ->url(fn (\App\Models\ElectricBill $record): string => route('filament.electricity.resources.meter-readings.edit', $record->reading->id))
+                ->icon('heroicon-o-pencil')
+                ->schema([
+                    TextInput::make('previous_reading')
+                        ->label(__('fields.previous_reading'))
+                        ->disabled()
+                        ->dehydrated(true)
+                        ->default(fn (\App\Models\ElectricBill $record) => $record->reading->previous_reading),
+                    TextInput::make('current_reading')
+                        ->label(__('fields.current_reading'))
+                        ->default(fn (\App\Models\ElectricBill $record) => optional($record->reading)->current_reading),
+                       
+                ])
+                ->action(function (array $data, \App\Models\ElectricBill $record) {
+                    $record->reading->update([
+                        'previous_reading' => $data['previous_reading'],
+                        'current_reading' => $data['current_reading'],
+                        'consume_unit' => $data['current_reading']-$data['previous_reading'],
+                    ]);
+                    $this->resetTable();
+                })->modalWidth('md')
+                ->successNotification(
+                    \Filament\Notifications\Notification::make()
+                        ->title('বিল সফলভাবে হালনাগাদ হয়েছে') 
+                        ->success()
+                )
+                ->failureNotification(
+                    \Filament\Notifications\Notification::make()
+                        ->title('বিল হালনাগাদ করতে ব্যর্থ হয়েছে')
+                        ->danger()
+                )
+                ->modalHeading('বিল হালনাগাদ করুন'),
+        ];
+    }
+    protected function getTableBulkActions(): array
+    {
+        return [];
+    }
+
+    protected function getTableHeaderActions(): array
+    {
+        return [
+            Action::make('print_bills')
+                ->label('বিল প্রিন্ট করুন')
+                 ->url(fn () => route('electric-bill-copy.print', [
+                    'month' => $this->month, 
+                    'year' => $this->year,
+                    'area_id'=>$this->area_id,
+                    ]))
+                ->color('primary')
+                ->icon('heroicon-o-printer')
+                ->openUrlInNewTab(),
+        ];
+    }
+
+   protected function getHeaderActions(): array
+   {
+         return [
+            //   Action::make('generateBills')
+            //     ->label('Generate Bills')
+            //     ->requiresConfirmation()
+            //     ->url(fn () => route('filament.electricity.pages.billgenerate'))
+            //     ->color('primary')
+            //     ->icon('heroicon-o-currency-dollar'),
+            
+         ];
+   }
+
+
+}
