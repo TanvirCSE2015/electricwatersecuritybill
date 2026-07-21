@@ -4,9 +4,10 @@ use App\Http\Controllers\Electric\ElectricReceiptController;
 use App\Http\Controllers\Electric\ElectricReporController;
 use App\Http\Controllers\Water\WaterInvoiceController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Electric\ElectricBillController;
+use App\Http\Controllers\Electric\ElectricPaymentController;
 use App\Http\Controllers\Water\WaterBillController;
 use App\Http\Controllers\Water\WaterReportController;
+use App\Http\Controllers\Water\WaterPaymentController;
 
 Route::get('/', function () {
     return view('gateway');
@@ -29,22 +30,6 @@ Route::get('/print-electric-receipt', [ElectricReceiptController::class, 'PrintE
 Route::get('/print-electric-bill-copy', [ElectricReceiptController::class, 'PrintElectricBillCopy'])
 ->name('electric-bill-copy.print');
 
-// home
-// Route::get('/', function () {
-//     return view('home');
-// });
-
-// bill pay
-Route::get('/electric-bill', function () {
-    return view('pay_bill.electric_bill');
-})->name('electic-bill');
-
-Route::get('/water-bill', function () {
-    return view('pay_bill.water_bill');
-})->name('water-bill');
-
-// Electric bill search
-Route::get('/electric-bill/search', [ElectricBillController::class, 'search'])->name('electric.bill.search');
 
 //water bill receipt print
 Route::get('/print-water-receipt', [WaterInvoiceController::class, 'PrintWaterReceipt'])
@@ -61,3 +46,37 @@ Route::get('/print-laser-report',[WaterReportController::class,'PrintWaterLaserR
 //previous due report
 Route::get('/print-pre-due-report',[WaterReportController::class,'PreviousDueReport'])
 ->name('water-pre-due-report.print')->middleware('auth');
+
+
+// ============= website routes =======================
+// home
+// Route::get('/', function () {
+//     return view('home');
+// });
+// bill pay
+// Route::get('/electric-bill', function () {
+//     return view('pay_bill.electric_bill');
+// })->name('electic-bill');
+// Electric bill
+// Route::get('/electric-bill/search', [ElectricPaymentController::class, 'search'])->name('electric.bill.search');
+Route::prefix('electric-bill')
+    ->name('electric.bill.')
+    ->controller(ElectricPaymentController::class)
+    ->group(function(){
+        Route::get('/', 'index')->name('index');
+        Route::get('/search', 'search')->name('search');
+        Route::post('/pay', 'pay')->name('pay');
+        Route::get('/gateway', 'showGateway')->name('gateway');
+        Route::post('/process-payment', 'processGatewayPayment')->name('process');
+    });
+// Water bill
+Route::prefix('water-bill')
+    ->name('water.bill.')
+    ->controller(WaterPaymentController::class)
+    ->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/search', 'search')->name('search');
+        Route::post('/pay', 'pay')->name('pay');
+        Route::get('/gateway', 'showGateway')->name('gateway');
+        Route::post('/process-payment', 'processGatewayPayment')->name('process');
+    });
